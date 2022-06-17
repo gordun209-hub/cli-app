@@ -1,40 +1,72 @@
+use std::env;
 use std::error::Error;
 use std::fs;
 
 pub struct Config {
     pub query: String,
     pub filename: String,
+    pub case_sensitive: bool,
 }
 
 impl Config {
+    // TODO whats that lifetime stuff?
     pub fn new(args: &[String]) -> Result<Config, &'static str> {
+        // return err if not enough arguments (we need three args).
         if args.len() < 3 {
             return Err("not enough arguments");
         }
-
+        // clone second arg which is query TODO: find better way.
         let query = args[1].clone();
+        // clone third arg which is filename to search.
         let filename = args[2].clone();
-
-        Ok(Config { query, filename })
+        // set option if case sensitive or not?
+        let case_sensitive = env::var("CASE_INSENSITIVE").is_err();
+        // return new config
+        Ok(Config {
+            query,
+            filename,
+            case_sensitive,
+        })
     }
 }
 
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     let contents = fs::read_to_string(config.filename)?;
 
-    for line in search(&config.query, &contents) {
+    let results = if config.case_sensitive {
+        search(&config.query, &contents)
+    } else {
+        search_case_insensitive(&config.query, &contents)
+    };
+
+    for line in results {
         println!("{}", line);
     }
 
     Ok(())
 }
-
+// logic brah
 pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
-    // create new empty vector
+    // create empty vector named results
     let mut results = Vec::new();
-// for content in lines push line to vector(result)
+    // for line in contents if line contains query push that line to result.
     for line in contents.lines() {
         if line.contains(query) {
+            results.push(line);
+        }
+    }
+    // return results
+    results
+}
+// case sensitive settings.
+pub fn search_case_insensitive<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
+    // TODO: again what's that lifetime things
+    // insensitive search with converting query to lowercase
+    let query = query.to_lowercase();
+    let mut results = Vec::new();
+
+    for line in contents.lines() {
+        if line.to_lowercase().contains(&query) {
             results.push(line);
         }
     }
@@ -44,17 +76,32 @@ pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
 
 #[cfg(test)]
 mod tests {
-    
     use super::*;
 
     #[test]
-    fn one_result() {
+    fn case_sensitive() {
         let query = "duct";
         let contents = "\
 Rust:
 safe, fast, productive.
-Pick three.";
+Pick three.
+Duct tape.";
+
         assert_eq!(vec!["safe, fast, productive."], search(query, contents));
     }
-}
 
+    #[test]
+    fn case_insensitive() {
+        let query = "rUsT";
+        let contents = "\
+Rust:
+safe, fast, productive.
+Pick three.
+Trust me.";
+
+        assert_eq!(
+            vec!["Rust:", "Trust me."],
+            search_case_insensitive(query, contents)
+        );
+    }
+}
